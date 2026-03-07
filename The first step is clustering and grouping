@@ -1,0 +1,134 @@
+library(Seurat)
+library(ggplot2)
+library(cowplot)
+library(Matrix)
+library(dplyr)
+library(ggsci)
+#10X data
+CA1 <- Read10X("A/")
+CA2 <- Read10X("B/")
+CA3 <- Read10X("C/")
+NC1 <- Read10X("D/")
+NC2 <- Read10X("E/")
+NC3 <- Read10X("F/")
+NC4 <- Read10X("G/")
+NC5 <- Read10X("H/")
+met1 <- Read10X("I/")
+met2 <- Read10X("J/")
+met3 <- Read10X("K/")
+
+
+
+colnames(CA1) <- paste(colnames(CA1),"CA1_CA",sep = "_")
+colnames(CA2) <- paste(colnames(CA2),"CA2_CA",sep = "_")
+colnames(CA3) <- paste(colnames(CA3),"CA3_CA",sep = "_")
+colnames(NC1) <- paste(colnames(NC1),"1NC1_1NC",sep = "_")
+colnames(NC2) <- paste(colnames(NC2),"1NC2_1NC",sep = "_")
+colnames(NC3) <- paste(colnames(NC3),"1NC3_1NC",sep = "_")
+colnames(NC4) <- paste(colnames(NC4),"1NC4_1NC",sep = "_")
+colnames(NC5) <- paste(colnames(NC5),"1NC5_1NC",sep = "_")
+colnames(met1) <- paste(colnames(met1),"met1_met",sep = "_")
+colnames(met2) <- paste(colnames(met2),"met2_met",sep = "_")
+colnames(met3) <- paste(colnames(met3),"met3_met",sep = "_")
+experiment.data <- cbind(CA1,CA2,CA3,NC1,NC2,NC3,NC4,NC5,met1,met2,met3)
+experiment.data <- NC4
+
+sam.name <- "multi"
+if(!dir.exists(sam.name)){
+  dir.create(sam.name)
+}
+Yuanshen2022
+#### 3. Creat Seurat ####
+experiment.aggregate <- CreateSeuratObject(
+  experiment.data,
+  project = "multi", 
+  min.cells = 10,
+  min.features = 200)
+experiment.aggregate[["percent.mt"]] <- PercentageFeatureSet(experiment.aggregate, 
+
+load("re")                                                             pattern = "^MT-")
+
+cat("Before filter :",nrow(scRNA_sub@meta.data),"cells\n")
+experiment.aggregate <- subset(experiment.aggregate, 
+                               subset = 
+                                 nFeature_RNA > 500 & 
+                                 nCount_RNA > 1000 & 
+                                 nCount_RNA < 20000 &
+                                 percent.mt < 20)
+cat("After filter :",nrow(sce.rename@meta.data),"cells\n")
+VlnPlot(experiment.merged,features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),group.by = "type",
+        ncol = 3)
+
+experiment.aggregate <- NormalizeData(experiment.aggregate, 
+                                      normalization.method = "LogNormalize",
+                                      scale.factor = 10000)
+
+
+experiment.aggregate <- FindVariableFeatures(experiment.aggregate, 
+                                             selection.method = "vst",
+                                             nfeatures = 2000)
+
+
+
+experiment.aggregate <- ScaleData(
+  object = experiment.aggregate,
+  do.scale = FALSE,
+  do.center = FALSE,
+  vars.to.regress = c("percent.mt"))
+
+
+experiment.aggregate <- RunPCA(object = experiment.aggregate, 
+                               features = VariableFeatures(experiment.aggregate),
+                               verbose = F,npcs = 50)
+
+
+
+
+
+library("stringr")
+phe=str_split(rownames(experiment.aggregate@meta.data),'_',simplify = T)
+head(phe) 
+experiment.aggregate@meta.data$patients=phe[,2] 
+experiment.aggregate@meta.data$type=phe[,3] 
+
+DimPlot(experiment.aggregate, reduction = "pca",group.by = "patients")
+
+
+library(harmony)
+experiment.aggregate <- RunHarmony(experiment.aggregate, group.by.vars = "patients") 
+load("rename.RData")
+
+dim.use <- 1:20
+
+experiment.aggregate <- FindNeighbors(experiment.aggregate, dims = dim.use,reduction = "harmony")
+experiment.aggregate <- FindClusters(experiment.aggregate, resolution = 0.5)
+
+experiment.aggregate <- RunUMAP(experiment.aggregate, dims = dim.use, 
+                                do.fast = TRUE,n.neighbors = 30,reduction = "harmony")
+DimPlot(object = experiment.aggregate, pt.size=0.5,label = T)
+FeaturePlot(experiment.aggregate,features=c("CDH11"),ncol = 1,split.by = "type")
+FeaturePlot(experiment.aggregate,features=c("LYZ","CD3D","MS4A1","KRT19","DCN","VWF","MZB1","KIT"),ncol = 3)
+
+
+
+experiment.merged <- RenameIdents(
+  object = experiment.aggregate,
+  "10"="Myeloid","1"="Myeloid","9"="Myeloid","14"="Myeloid","11"="Myeloid",
+  "0"="T/NK","4"="T/NK",
+  "17"="B cells","6"="B cells","12"="Plasma",
+  "8"="Endothelial","22"="Endothelial","13"="Fibo","3"="Fibo","19"="Fibo","7"="Mast cells",
+  "15"="Epithelial","5"="Epithelial","2"="Epithelial","20"="Epithelial","23"="Epithelial"
+)
+pdf(paste0("./",sam.name,"/CellCluster-TSNEPlot_Rename_",max(dim.use),"PC.pdf"),width = 5,height = 4)
+DimPlot(object = experiment.merged, pt.size=0.5,
+        reduction = "umap",label = T) +
+  ggsci::scale_color_d3()
+dev.off()
+experiment.merged@meta.data$celltype <- Idents(experiment.merged)
+
+all.markers <- FindAllMarkers(experiment.merged, only.pos = TRUE, 
+                              min.pct = 0.3, logfc.threshold = 0.25)
+write.table(all.markers,
+            file=paste0("allmarkerdiff.txt"),
+            sep="\t",quote = F,row.names = F)
+save(experiment.merged,file=paste0("rename2_1.RData"))
