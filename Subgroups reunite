@@ -1,0 +1,29 @@
+
+cells_sub <- subset(experiment.merged@meta.data, 
+                    type %in% c("met"))
+scRNA_sub <- subset(experiment.merged, 
+                    cells=row.names(cells_sub))
+
+sce<- subset(sce,
+                              idents = unique(Idents(sce))[!unique(Idents(sce)) %in% c(11)]
+)
+
+
+DimPlot(object = scRNA_sub, pt.size=0.5,label = T)
+
+sce=scRNA_sub
+sce <- NormalizeData(sce, normalization.method = "LogNormalize", scale.factor = 1e4) 
+sce <- FindVariableFeatures(sce, selection.method = 'vst', nfeatures = 2000)
+sce <- ScaleData(sce, vars.to.regress = "percent.mt")
+sce <- RunPCA(sce, features = VariableFeatures(object = sce)) 
+
+library(harmony)
+sce <- RunHarmony(sce, group.by.vars = "patients") 
+sce <- FindNeighbors(sce, dims = 1:20,reduction = 'harmony')
+sce <- FindClusters(sce, resolution = 0.5)
+sce <- RunUMAP(sce, dims = 1:20,reduction = 'harmony',n.neighbors = 30)
+DimPlot(sce, reduction = 'umap',label = T,split.by = "type")
+DimPlot(sce, reduction = 'umap',label = T)
+
+
+FeaturePlot(sce.rename,features=c("CDH11"),ncol = 1)
