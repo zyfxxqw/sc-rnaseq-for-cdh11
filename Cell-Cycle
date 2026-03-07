@@ -1,0 +1,57 @@
+#================================================================================
+
+#                        Cell-Cycle
+
+#================================================================================
+library(Seurat)
+
+# For human data, Cell-Cycle genes 
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+
+#load data 
+# load("~/data_analysis/seuratV5_test/scRNA_analysis/sce_cca_cellltype.RData")
+#Assign Cell-Cycle Scores
+sce_cca <- CellCycleScoring(sce, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+# plot 
+DimPlot(sce_cca, group.by = 'Phase')
+DimPlot(sce_cca, group.by = 'Phase', reduction = 'pca')
+
+#If cell cycle affect the cluster in your data 
+#Please Regress out cell cycle scores during data scaling
+
+sce[["RNA"]] <- as(sce[["RNA"]], "Assay")
+
+sce@meta.data$Phase <- Idents(sce)
+
+meta_data <- sce_cca@meta.data 
+plot_data <- data.frame(table(meta_data$type,meta_data$Phase))
+plot_data$Total <- apply(plot_data,1,function(x)sum(plot_data[plot_data$Var1 == x[1],3]))
+plot_data <- plot_data %>% mutate(Percentage = round(Freq/Total,3) * 100)
+ggplot(plot_data,aes(x = Var1,y = Percentage,fill = Var2)) +
+  geom_bar(stat = "identity",position = "stack") +
+  theme_classic() + 
+  theme(axis.title.x = element_blank()) + labs(fill = "Cluster")
+
+
+library("ggunchull")
+library(tidydr)
+mycolors <-c(  '#DF8F44FF' , '#57C3F3', '#B53E2B',
+             '#9FA3A8', '#E0D4CA',  '#C5DEBA', '#F7F398',
+             '#C1E6F3', '#6778AE', '#91D0BE', '#B53E2B',
+             '#712820', '#DCC1DD', '#CCE0F5',  '#CCC9E6', '#625D9E', '#68A180', '#3A6963',
+             '#968175')
+
+
+
+
+DimPlot(object = sce_cca, pt.size=0.5,group.by = "Phase",
+        reduction = "umap",label = F)+NoAxes()+
+  theme(aspect.ratio=1) +
+  theme_dr()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  scale_fill_manual(values = mycolors) +
+  scale_color_manual(values = mycolors)
+
