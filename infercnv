@@ -5,7 +5,6 @@ library(infercnv)
 library(Seurat)
 load("rename2_1.RData")
 pbmc <- experiment.merged
-#细胞分群命名
 
 pbmc@meta.data$celltype <- plyr::mapvalues(x = pbmc@meta.data[,"seurat_clusters"], from = current.cluster.ids, to = new.cluster.ids)
 
@@ -34,15 +33,15 @@ infercnv_obj = CreateInfercnvObject(raw_counts_matrix=dfcount,
                                     annotations_file="./metaFiles.txt",
                                     delim="\t",
                                     gene_order_file= "./geneFile.txt",
-                                    ref_group_names="T/NK") # 如果有正常细胞的话，把正常细胞的分组填进去
-future::plan("multiprocess",workers=15)# 多核并行处理
+                                    ref_group_names="T/NK") 
+future::plan("multiprocess",workers=15)
 
 infercnv_obj = infercnv::run(infercnv_obj,
                              cutoff=0.1, # cutoff=1 works well for Smart-seq2, and cutoff=0.1 works well for 10x Genomics
                              out_dir='infercnv_out/', 
-                             cluster_by_groups=TRUE,  # 是否根据细胞注释文件的分组对肿瘤细胞进行
-                             denoise=TRUE, #去噪
-                             HMM=F, #是否基于HMM预测CNV,选择F会加快运算速度
+                             cluster_by_groups=TRUE, 
+                             denoise=TRUE, 
+                             HMM=F, 
                              output_format = "pdf" )
 
 
