@@ -1,0 +1,66 @@
+
+library(Seurat)
+library(ggplot2)
+library(cowplot)
+library(Matrix)
+library(dplyr)
+library(ggsci)
+library(monocle)
+load("neurename.RData")
+
+pbmc <- scRNA_sub
+data <- GetAssayData(object = pbmc, assay = "RNA", slot = "counts")
+pd <- new('AnnotatedDataFrame', data = pbmc@meta.data)
+fData <- data.frame(gene_short_name = row.names(data), row.names = row.names(data))
+fd <- new('AnnotatedDataFrame', data = fData)
+
+#Construct monocle cds
+monocds <- newCellDataSet(data,
+                          phenoData = pd,
+                          featureData = fd,
+                          lowerDetectionLimit = 0.5,
+                          expressionFamily = negbinomial.size())
+
+
+
+
+
+monocds <- estimateSizeFactors(monocds)
+monocds<- estimateDispersions(monocds)
+#Filtering low-quality cells
+monocds <- detectGenes(monocds, min_expr = 3)
+print(head(fData(monocds)))
+expressed_genes <- row.names(subset(fData(monocds), num_cells_expressed >= 10))
+monocds <- monocds[expressed_genes, ]
+
+disp_table <- dispersionTable(monocds)
+unsup_clustering_genes <- subset(
+  disp_table, mean_expression >= 0.05 &
+    dispersion_empirical >= 2 * dispersion_fit
+) #
+monocds <- setOrderingFilter(monocds, unsup_clustering_genes$gene_id)
+plot_ordering_genes(monocds)
+
+
+monocds <- reduceDimension(
+  monocds,
+  max_components = 2,
+  method = "DDRTree"
+)
+
+monocds <- orderCells(monocds)
+
+
+monocds <- orderCells(monocds, root_state= 8)
+plot_cell_trajectory(monocds,color_by="State")+
+  facet_wrap(~State,nrow=1)
+
+mycolors <-c('#E95C59','#C1E6F3','#F1BB72','#AB3282','#53A85F','#DCC1DD',  '#F3B1A0', '#D6E7A3', '#57C3F3',
+             '#E59CC4',   '#BD956A',  '#F1BB72',
+             '#9FA3A8', '#E0D4CA',  '#C5DEBA', '#F7F398',
+             '#C1E6F3', '#6778AE', '#91D0BE', '#B53E2B',
+             '#712820', '#CCE0F5',  '#CCC9E6', '#625D9E', '#68A180', '#3A6963',
+             '#968175')
+plot_cell_trajectory(monocds, color_by = "new_celltype")+
+  scale_color_manual(values=mycolors)
+plot_cell_trajectory(monocds, color_by = "Pseudotime")
