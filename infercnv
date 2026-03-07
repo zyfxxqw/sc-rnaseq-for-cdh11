@@ -1,0 +1,59 @@
+remove.packages("infercnv")
+devtools::install_github("broadinstitute/infercnv")
+BiocManager::install("AnnoProbe")
+library(infercnv)
+library(Seurat)
+load("rename2_1.RData")
+pbmc <- experiment.merged
+#细胞分群命名
+
+pbmc@meta.data$celltype <- plyr::mapvalues(x = pbmc@meta.data[,"seurat_clusters"], from = current.cluster.ids, to = new.cluster.ids)
+
+pbmc[["RNA"]] <- as(pbmc[["RNA"]], "Assay")
+
+
+groupinfo= data.frame(cellId = colnames(dfcount),cellType= pbmc@meta.data$celltype )
+
+library(AnnoProbe)
+geneInfor=annoGene(rownames(dfcount),"SYMBOL",'human')
+geneInfor=geneInfor[with(geneInfor, order(chr, start)),c(1,4:6)]
+geneInfor=geneInfor[!duplicated(geneInfor[,1]),]
+
+dfcount =dfcount [rownames(dfcount ) %in% geneInfor[,1],]
+dfcount =dfcount [match( geneInfor[,1], rownames(dfcount) ),] 
+
+
+write.table(dfcount ,file ='expFile.txt',sep = '\t',quote = F)
+write.table(groupinfo,file = 'metaFiles.txt',sep = '\t',quote = F,col.names = F,row.names = F)
+write.table(geneInfor,file ='geneFile.txt',sep = '\t',quote = F,col.names = F,row.names = F)
+
+library(Seurat)
+library(ggplot2)
+library(infercnv)
+infercnv_obj = CreateInfercnvObject(raw_counts_matrix=dfcount,
+                                    annotations_file="./metaFiles.txt",
+                                    delim="\t",
+                                    gene_order_file= "./geneFile.txt",
+                                    ref_group_names="T/NK") # 如果有正常细胞的话，把正常细胞的分组填进去
+future::plan("multiprocess",workers=15)# 多核并行处理
+
+infercnv_obj = infercnv::run(infercnv_obj,
+                             cutoff=0.1, # cutoff=1 works well for Smart-seq2, and cutoff=0.1 works well for 10x Genomics
+                             out_dir='infercnv_out/', 
+                             cluster_by_groups=TRUE,  # 是否根据细胞注释文件的分组对肿瘤细胞进行
+                             denoise=TRUE, #去噪
+                             HMM=F, #是否基于HMM预测CNV,选择F会加快运算速度
+                             output_format = "pdf" )
+
+
+expr <- infercnv_obj@expr.data
+expr2=expr-1
+expr2=expr2 ^ 2
+CNV_score=as.data.frame(colMeans(expr2))
+colnames(CNV_score)="CNV_score"
+head(CNV_score)
+experiment.merged@meta.data$CNV <- CNV_score[,1] 
+DimPlot(experiment.merged,reduction='umap',group.by="CNV")
+VlnPlot(experiment.merged, features = c("CNV"),pt.size=0,
+        ncol = 1)
+
