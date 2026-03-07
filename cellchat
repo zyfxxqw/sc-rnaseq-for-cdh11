@@ -1,0 +1,117 @@
+library(Seurat)
+library(ggplot2)
+library(cowplot)
+library(Matrix)
+library(dplyr)
+
+library(CellChat)
+library(ggplot2)
+library(patchwork)
+library(ggalluvial)
+library(igraph)
+library(dplyr)
+suppressMessages(options(stringsAsFactors = FALSE))
+suppressMessages(options(futrue.globlas.Maxsize=8000*1024^2))
+suppressWarnings(suppressMessages(future::plan("multiprocess", workers = 16)))
+options(future.globals.maxSize = 8000 * 1024^2)
+load("EPrename.RData")
+experiment.merged <- sce.rename
+
+
+cells_sub <- subset(experiment.merged@meta.data, 
+                    type%in% c("met"))
+scRNA_sub <- subset(experiment.merged, 
+                    cells=row.names(cells_sub))
+meta <- scRNA_sub@meta.data
+meta$new_celltype = droplevels(meta$new_celltype, exclude = setdiff(levels(meta$new_celltype),unique(meta$new_celltype))) 
+cellchat <- createCellChat(object = scRNA_sub, meta = meta, group.by = "new_celltype")
+
+CellChatDB <- CellChatDB.human # use CellChatDB.mouse if running on mouse data
+showDatabaseCategory(CellChatDB)
+
+dplyr::glimpse(CellChatDB$interaction)
+#CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling")
+cellchat@DB <- CellChatDB
+
+cellchat <- subsetData(cellchat,features = NULL)
+
+cellchat <- identifyOverExpressedGenes(cellchat)
+cellchat <- identifyOverExpressedInteractions(cellchat)
+cellchat <- projectData(cellchat,PPI.human)
+cellchat <- computeCommunProb(cellchat,raw.use = T,population.size = TRUE)
+cellchat <- filterCommunication(cellchat, min.cells = 10)
+
+df.net <- subsetCommunication(cellchat)
+DT::datatable(df.net)
+#write.csv(df.net,'01.df.net.csv')
+cellchat <- computeCommunProbPathway(cellchat)
+
+cellchat <- aggregateNet(cellchat)
+
+groupSize <- as.numeric(table(cellchat@idents))
+groupSize
+saveRDS(object = cellchat, file = "met.rds") 
+pathways.show <- df.net$pathway_name
+p1 <- netAnalysis_contribution(cellchat, signaling = pathways.show[1],
+                               title =  pathways.show[1])#展现对特定通路的贡献程度
+p2 <- netAnalysis_contribution(cellchat, signaling = pathways.show)
+cowplot::plot_grid(p1, p2, align = "h",ncol=2)
+
+#合并分析
+A <- readRDS('1NC.rds')
+B <- readRDS('CA.rds')
+C <- readRDS('met.rds')
+D <- readRDS('D.rds')
+E <- readRDS('E.rds')
+G <- readRDS('F.rds')
+object.list <- list(A = A, B= B,C=C)
+cellchat <- mergeCellChat(object.list, add.names = names(object.list))
+cellchat
+
+gg1 <- compareInteractions(cellchat, show.legend = F, group = c(1,2))
+gg2 <- compareInteractions(cellchat, show.legend = F, group = c(1,2), measure = "weight")
+gg1 + gg2
+
+gg1 <- rankNet(cellchat, mode = "comparison", stacked = T, do.stat = TRUE)
+gg2 <- rankNet(cellchat, mode = "comparison", stacked = F, do.stat = TRUE,comparison = c(1,2,3))
+gg1 + gg2
+
+netVisual_bubble(cellchat, sources.use = c(1:13), 
+                 targets.use = c(14:17),  comparison = c(1, 2), angle.x = 45, signaling = c("CCL","CXCL","IFN-II"))
+
+?netVisual_bubble
+netVisual_bubble(cellchat, sources.use = (15:17), targets.use = c(11:13))
+netVisual_bubble(cellchat, sources.use = (13), targets.use = c(15:21),  comparison = c(1, 2))
+
+
+gg1 <- netVisual_heatmap(cellchat)
+## Do heatmap based on a merged object
+gg2 <- netVisual_heatmap(cellchat, measure = "weight")
+## Do heatmap based on a merged object
+gg1 + gg2
+
+
+par(mfrow = c(1,2), xpd=TRUE)
+netVisual_diffInteraction(cellchat, weight.scale = T)
+netVisual_diffInteraction(cellchat, weight.scale = T, measure = "weight")
+
+
+#heatmap
+pathways.show <- c("ANXA1") 
+par(mfrow = c(1,2), xpd=TRUE)
+ht <- list()
+for (i in 1:length(object.list)) {
+  ht[[i]] <- netVisual_heatmap(object.list[[i]], signaling = pathways.show, 
+                               color.heatmap = "Reds",
+                               title.name = paste(pathways.show, "signaling ",names(object.list)[i]))
+}
+## Do heatmap based on a single object 
+## 
+## Do heatmap based on a single object
+ComplexHeatmap::draw(ht[[1]] + ht[[2]], ht_gap = unit(0.5, "cm"))
+
+netVisual_heatmap(B, signaling = pathways.show,
+                  title.name = paste(pathways.show, "signaling "))
+
+
+
