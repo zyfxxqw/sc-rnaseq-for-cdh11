@@ -1,0 +1,19 @@
+devtools::install_github("campbio/decontX")
+counts <-  GetAssayData(object =experiment.aggregate, slot = "counts")
+load("raw.RData")
+
+library(decontX)
+
+decontX_results <- decontX(counts)
+experiment.aggregate$Contamination =decontX_results$contamination
+head(experiment.merged@meta.data) # 可以查看一下结果，这里就不展示了
+
+
+library(ggplot2)
+FeaturePlot(experiment.aggregate, 
+            features = 'Contamination', 
+            raster=FALSE,split.by = "type"       # 细胞过多时候需要加这个参数
+)
+
+experiment.aggregate = experiment.aggregate[,experiment.aggregate$Contamination < 0.15]
+DimPlot(object = low_con_scobj, pt.size=0.5,label = T)
