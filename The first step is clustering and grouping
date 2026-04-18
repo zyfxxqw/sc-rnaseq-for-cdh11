@@ -37,7 +37,7 @@ sam.name <- "multi"
 if(!dir.exists(sam.name)){
   dir.create(sam.name)
 }
-Yuanshen2022
+
 #### 3. Creat Seurat ####
 experiment.aggregate <- CreateSeuratObject(
   experiment.data,
